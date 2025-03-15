@@ -1,6 +1,7 @@
 package oauth2
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
@@ -26,6 +27,22 @@ const (
 	ScopeAddress = "address"
 	ScopePhone   = "phone"
 )
+
+// Helper function to generate random strings for tokens, etc.
+func generateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Printf("[OAuth2] Error generating random string: %v", err)
+		return ""
+	}
+
+	for i := 0; i < length; i++ {
+		b[i] = charset[int(b[i])%len(charset)]
+	}
+	return string(b)
+}
 
 // IDTokenClaims represents the claims in an OIDC ID token
 type IDTokenClaims struct {
@@ -346,19 +363,11 @@ func (p *OIDCProvider) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 
 // Extended handleAuthorizationCode to support OIDC
 func (p *OIDCProvider) handleAuthorizationCode(w http.ResponseWriter, req *AuthorizationRequest, user *User) {
-	// Check if openid scope was requested
-	isOIDCRequest := false
-	scopes := parseScope(req.Scope)
-	for _, scope := range scopes {
-		if scope == ScopeOpenID {
-			isOIDCRequest = true
-			break
-		}
-	}
+	// We're keeping this code minimal for now - will implement OIDC-specific handling later
 
 	// Generate authorization code
 	code := generateRandomString(32)
-	expiresAt := time.Now().Add(time.Duration(p.config.AuthCodeLifetime) * time.Second)
+	expiresAt := time.Now().Add(time.Duration(p.Provider.config.AuthCodeLifetime) * time.Second)
 
 	authCode := &AuthorizationCode{
 		Code:        code,
@@ -383,7 +392,9 @@ func (p *OIDCProvider) handleAuthorizationCode(w http.ResponseWriter, req *Autho
 
 	log.Printf("[OIDC] Authorization code generated, redirecting to: %s", redirectURI)
 
-	http.Redirect(w, r, redirectURI, http.StatusFound)
+	// Use simple redirect instead of http.Redirect which requires an http.Request
+	w.Header().Set("Location", redirectURI)
+	w.WriteHeader(http.StatusFound)
 }
 
 // handleAuthorizationCodeGrant handles token requests with authorization_code grant type
@@ -403,8 +414,8 @@ func (p *OIDCProvider) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 	clientID := r.FormValue("client_id")
 	clientSecret := r.FormValue("client_secret")
 
-	// Validate the client
-	client, err := p.clientStore.ValidateClient(clientID, clientSecret)
+	// Validate the client - we don't need to store the client, just check it's valid
+	_, err := p.clientStore.ValidateClient(clientID, clientSecret)
 	if err != nil {
 		log.Printf("[OIDC] Client authentication failed: %v", err)
 		p.tokenError(w, "invalid_client", "Client authentication failed")
@@ -447,10 +458,10 @@ func (p *OIDCProvider) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 		AccessToken:  accessToken,
 		TokenType:    "Bearer",
 		RefreshToken: refreshToken,
-		ExpiresIn:    p.config.AccessTokenLifetime,
+		ExpiresIn:    p.Provider.config.AccessTokenLifetime,
 		Scope:        authCode.Scope,
 		CreatedAt:    now,
-		ExpiresAt:    now.Add(time.Duration(p.config.AccessTokenLifetime) * time.Second),
+		ExpiresAt:    now.Add(time.Duration(p.Provider.config.AccessTokenLifetime) * time.Second),
 		UserID:       authCode.UserID,
 		ClientID:     authCode.ClientID,
 	}
@@ -488,7 +499,7 @@ func (p *OIDCProvider) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
 		"refresh_token": refreshToken,
-		"expires_in":    p.config.AccessTokenLifetime,
+		"expires_in":    p.Provider.config.AccessTokenLifetime,
 	}
 
 	if authCode.Scope != "" {
