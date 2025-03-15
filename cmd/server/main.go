@@ -116,7 +116,7 @@ func main() {
 	// Load signing key if available
 	keyPath := os.Getenv("OIDC_SIGNING_KEY")
 	if keyPath == "" {
-		keyPath = "keys/private.pem"
+		keyPath = "keys/private_key.pem"  // Updated to match our generated file name
 	}
 
 	if _, err := os.Stat(keyPath); err == nil {
