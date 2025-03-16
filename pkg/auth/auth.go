@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/rand"
 	"errors"
 	"log"
 	"net/http"
@@ -208,16 +209,17 @@ func (a *Authenticator) GetUserInfo(userID string) (*UserInfo, error) {
 	return a.userInfoProvider.GetUserInfo(userID)
 }
 
-// Helper function to generate a random string (simplified version)
-// In a real application, use a crypto secure random generator
+// Helper function to generate a crypto secure random string
 func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, length)
+	_, err := rand.Read(result)
+	if err != nil {
+		log.Fatalf("Failed to generate random string: %v", err)
+	}
 
-	// In a real implementation, use crypto/rand
 	for i := range result {
-		result[i] = charset[time.Now().UnixNano()%int64(len(charset))]
-		time.Sleep(1 * time.Nanosecond) // Ensure different values
+		result[i] = charset[int(result[i])%len(charset)]
 	}
 
 	return string(result)
