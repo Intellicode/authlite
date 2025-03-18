@@ -1,92 +1,38 @@
+/*
+Package storage provides a flexible storage interface for authlite.
+
+The package is designed to support multiple storage backends through a common interface.
+Currently, it includes an in-memory implementation, but it's structured to be extended
+with other backends like Redis, SQL databases, etc.
+
+Architecture:
+- Store interface: Defines the operations any storage backend must implement
+- Provider: Factory functions to create and configure different store types
+- Implementations: Concrete implementations of the Store interface
+
+Example usage:
+
+	// Create a store with default configuration (in-memory)
+	store, err := storage.NewStore(storage.DefaultConfig())
+	if err != nil {
+		log.Fatalf("Failed to create store: %v", err)
+	}
+
+	// Store a value
+	err = store.Set("users", "user1", userData)
+
+	// Retrieve a value
+	data, err := store.Get("users", "user1")
+
+	// List all keys in a collection
+	keys, err := store.List("users")
+
+	// Delete a value
+	err = store.Delete("users", "user1")
+
+To add a new storage backend:
+1. Create a new file with your implementation of the Store interface
+2. Add a new StoreType constant in provider.go
+3. Update the NewStore function to handle the new store type
+*/
 package storage
-
-import (
-	"errors"
-	"sync"
-)
-
-// Store defines the basic operations for a storage backend
-type Store interface {
-	// Get retrieves a value by key
-	Get(collection, key string) (interface{}, error)
-
-	// Set stores a value with the specified key
-	Set(collection, key string, value interface{}) error
-
-	// Delete removes a value by key
-	Delete(collection, key string) error
-
-	// List returns all keys in a collection
-	List(collection string) ([]string, error)
-}
-
-// MemoryStore implements Store using an in-memory map
-type MemoryStore struct {
-	data  map[string]map[string]interface{}
-	mutex sync.RWMutex
-}
-
-// NewMemoryStore creates a new in-memory store
-func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{
-		data: make(map[string]map[string]interface{}),
-	}
-}
-
-// Get retrieves a value by key
-func (s *MemoryStore) Get(collection, key string) (interface{}, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	if coll, ok := s.data[collection]; ok {
-		if val, ok := coll[key]; ok {
-			return val, nil
-		}
-	}
-
-	return nil, errors.New("key not found")
-}
-
-// Set stores a value with the specified key
-func (s *MemoryStore) Set(collection, key string, value interface{}) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	if _, ok := s.data[collection]; !ok {
-		s.data[collection] = make(map[string]interface{})
-	}
-
-	s.data[collection][key] = value
-	return nil
-}
-
-// Delete removes a value by key
-func (s *MemoryStore) Delete(collection, key string) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	if coll, ok := s.data[collection]; ok {
-		if _, exists := coll[key]; exists {
-			delete(coll, key)
-			return nil
-		}
-	}
-
-	return errors.New("key not found")
-}
-
-// List returns all keys in a collection
-func (s *MemoryStore) List(collection string) ([]string, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	if coll, ok := s.data[collection]; ok {
-		keys := make([]string, 0, len(coll))
-		for key := range coll {
-			keys = append(keys, key)
-		}
-		return keys, nil
-	}
-
-	return []string{}, nil
-}
